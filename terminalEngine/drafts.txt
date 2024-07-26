@@ -1,0 +1,93 @@
+from typing import Self
+import time
+import os
+
+
+class Engine:
+    def __init__(
+        self: Self,
+        *,
+        width: int = 80,
+        height: int = 24,
+        fps: int = 30,
+        empty: str = ".",
+        filled: str = "#",
+        title: str = "Terminal Game Engine",
+    ) -> None:
+        """Initializes the Engine class with the specified width, height, and title of the terminal window or screen to be created
+        and displayed on the screen. The default values are width=80, height=24, and title="Terminal Game Engine". The title is
+        displayed on the terminal window or screen. The width and height are the dimensions of the terminal window or screen.
+        The width is the number of columns and the height is the number of rows of the terminal window or screen.
+        The terminal window or screen is created and displayed on the screen when the Engine class is initialized or created.
+        The mainLoop method is called to start the main game loop or game engine loop. The clearTerminal method is called
+        to clear the terminal screen or window. The main program entry point is the main function which creates an instance
+        of the Engine class and calls the mainLoop method to start the main game loop or game engine loop. The main function
+        is executed if the script is executed directly and not imported as a module from another script or program file. The
+        main function is the entry point of the program or script. The main function calls the mainLoop method of the Engine
+        class to start the main game loop or game engine loop. The main function is the entry point of the program or script.
+        The main function calls the mainLoop method of the Engine class to start the main game loop or game engine loop.
+        The main function is the entry point of the program or script. The main function calls the mainLoop method of the
+        Engine class to start the main game loop or game engine loop. The main function is the entry point of the program or script.
+
+        Args:
+            self (Self): The instance of the Engine class
+            width (int, optional): . Defaults to 80.
+            height (int, optional): . Defaults to 24.
+            title (str, optional): . Defaults to "Terminal Game Engine".
+        """
+        self.width = width
+        self.height = height
+        self.fps = fps
+        self.empty = empty
+        self.filled = filled
+        self.title = title
+
+    def draw(self: Self) -> None:
+        """
+        Draws the terminal screen or window with the specified empty and filled characters. The empty character is the character
+        used to draw the empty or blank spaces of the terminal screen or window. The filled character is the character used to
+        draw the filled spaces of the terminal screen or window. The terminal screen or window is drawn with the specified empty
+        and filled characters. The terminal screen or window is drawn with the specified empty and filled characters. The terminal
+        screen or window is drawn with the specified empty and filled characters. The terminal screen or window is drawn with the
+        specified empty and filled characters. The terminal screen or window is drawn with the specified empty and filled characters.
+        The terminal screen or window is drawn with the specified empty and filled characters. The terminal screen or window is drawn
+        with the specified empty and filled characters. The terminal screen or window is drawn with the specified empty and filled characters.
+
+        Args:
+            self (Self): The instance of the Engine class
+            empty (str, optional): . Defaults to '.'.
+            filled (str, optional): . Defaults to '#'.
+        """
+        for y in range(self.height):
+            for x in range(self.width):
+                if x == 0 or x == self.width - 1 or y == 0 or y == self.height - 1:
+                    print(self.filled, end="")
+                else:
+                    print(self.empty, end="")
+            print()
+
+    def mainLoop(self) -> None:
+        while True:
+            self.clearTerminal()
+            self.draw()
+            time.sleep(1 / self.fps)
+
+    def clearTerminal(self) -> None:
+        """
+        Clears the terminal screen works on Windows os and Unix-like os
+        """
+        # Detects the os and executes the command to clear the terminal cls for Windows and clear for Unix-like os
+        os.system("cls" if os.name == "nt" else "clear")
+
+
+def main() -> None:
+    """
+    The main program entry point
+    """
+    engine = Engine(width=25, height=25, fps=60, empty="  ", filled="[]", title="Test")
+    engine.mainLoop()
+
+
+# Executes the main function if the script is executed directly and not imported as a module from another script or program file
+if __name__ == "__main__":
+    main()

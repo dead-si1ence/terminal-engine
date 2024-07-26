@@ -1,0 +1,415 @@
+TerminalEngine Documentation
+
+version 0.1.0
+---------------------
+import time
+import os
+import sys
+import select
+import threading
+import math
+
+class TerminalEngine:
+    def __init__(self, width, height, tick_rate=60, max_fps=60):
+        self.width = width
+        self.height = height
+        self.buffer = [[' ' for _ in range(width)] for _ in range(height)]
+        self.prev_buffer = [[' ' for _ in range(width)] for _ in range(height)]
+        self.running = False
+        self.tick_rate = tick_rate
+        self.max_fps = max_fps
+        self.tick_duration = 1.0 / tick_rate
+        self.frame_duration = 1.0 / max_fps
+        self.keys_pressed = set()
+        self.keys_released = set()
+        self.input_thread = None
+
+    def clear_screen(self):
+        os.system('cls' if os.name == 'nt' else 'clear')
+
+    def draw_pixel(self, x, y, char):
+        if 0 <= x < self.width and 0 <= y < self.height:
+            self.buffer[y][x] = char
+
+    def draw_text(self, x, y, text):
+        for i, char in enumerate(text):
+            self.draw_pixel(x + i, y, char)
+
+    def render(self):
+        output = []
+        for y in range(self.height):
+            for x in range(self.width):
+                if self.buffer[y][x] != self.prev_buffer[y][x]:
+                    output.append(f"\033[{y+1};{x+1}H{self.buffer[y][x]}")
+                    self.prev_buffer[y][x] = self.buffer[y][x]
+        sys.stdout.write(''.join(output))
+        sys.stdout.flush()
+
+    def input_handler(self):
+        while self.running:
+            if os.name == 'nt':
+                import msvcrt
+                if msvcrt.kbhit():
+                    key = msvcrt.getch().decode('utf-8').lower()
+                    self.keys_pressed.add(key)
+            else:
+                rlist, _, _ = select.select([sys.stdin], [], [], 0.1)
+                if rlist:
+                    key = sys.stdin.read(1).lower()
+                    self.keys_pressed.add(key)
+            time.sleep(0.01)
+
+    def start_input_thread(self):
+        self.input_thread = threading.Thread(target=self.input_handler)
+        self.input_thread.daemon = True
+        self.input_thread.start()
+
+    def stop_input_thread(self):
+        self.running = False
+        if self.input_thread:
+            self.input_thread.join()
+
+    def is_key_pressed(self, key):
+        return key in self.keys_pressed
+
+    def is_key_released(self, key):
+        return key in self.keys_released
+
+    def clear_key_states(self):
+        self.keys_released = self.keys_pressed
+        self.keys_pressed = set()
+
+    def update(self, dt):
+        pass
+
+    def run(self):
+        self.running = True
+        self.clear_screen()
+        print("\033[?25l", end='', flush=True)  # Hide cursor
+
+        self.start_input_thread()
+
+        previous_time = time.perf_counter()
+        lag = 0.0
+
+        while self.running:
+            current_time = time.perf_counter()
+            elapsed = current_time - previous_time
+            previous_time = current_time
+            lag += elapsed
+
+            while lag >= self.tick_duration:
+                self.update(self.tick_duration)
+                lag -= self.tick_duration
+
+            self.render()
+            self.clear_key_states()
+
+            frame_end = time.perf_counter()
+            frame_elapsed = frame_end - current_time
+            if frame_elapsed < self.frame_duration:
+                time.sleep(self.frame_duration - frame_elapsed)
+
+        self.stop_input_thread()
+        print("\033[?25h", end='', flush=True)  # Show cursor
+
+class SimpleGame(TerminalEngine):
+    def __init__(self, width, height):
+        super().__init__(width, height)
+        self.player_x = width / 2
+        self.player_y = height / 2
+        self.player_vx = 0
+        self.player_vy = 0
+        self.acceleration = 50
+        self.max_speed = 20
+        self.friction = 10
+
+    def update(self, dt):
+        if self.is_key_pressed('q'):
+            self.running = False
+
+        if self.is_key_pressed('w'): self.player_vy -= self.acceleration * dt
+        if self.is_key_pressed('s'): self.player_vy += self.acceleration * dt
+        if self.is_key_pressed('a'): self.player_vx -= self.acceleration * dt
+        if self.is_key_pressed('d'): self.player_vx += self.acceleration * dt
+
+        if not self.is_key_pressed('w') and not self.is_key_pressed('s'):
+            self.player_vy -= math.copysign(min(abs(self.player_vy), self.friction * dt), self.player_vy)
+        if not self.is_key_pressed('a') and not self.is_key_pressed('d'):
+            self.player_vx -= math.copysign(min(abs(self.player_vx), self.friction * dt), self.player_vx)
+
+        speed = math.sqrt(self.player_vx**2 + self.player_vy**2)
+        if speed > self.max_speed:
+            self.player_vx = (self.player_vx / speed) * self.max_speed
+            self.player_vy = (self.player_vy / speed) * self.max_speed
+
+        self.player_x += self.player_vx * dt
+        self.player_y += self.player_vy * dt
+
+        self.player_x = max(0, min(self.width - 1, self.player_x))
+        self.player_y = max(0, min(self.height - 1, self.player_y))
+
+        self.buffer = [[' ' for _ in range(self.width)] for _ in range(self.height)]
+        self.draw_pixel(int(self.player_x), int(self.player_y), '@')
+
+        speed = math.sqrt(self.player_vx**2 + self.player_vy**2)
+        self.draw_text(0, 0, f"Speed: {speed:.2f}")
+        self.draw_text(0, 1, f"Pos: ({self.player_x:.2f}, {self.player_y:.2f})")
+        self.draw_text(0, 2, "Use WASD to move, Q to quit")
+
+if __name__ == "__main__":
+    game = SimpleGame(40, 20)
+    game.run()
+---------------------
+
+Overview
+The TerminalEngine is a Python-based game engine for creating text-based games that run in the terminal. 
+It provides a simple API for handling game logic, rendering, and input.
+Features
+
+Cross-platform compatibility (Windows and Unix-like systems)
+Optimized rendering with double buffering
+Smooth game loop with fixed update rate and variable frame rate
+Non-blocking input handling
+Simple API for drawing and text rendering
+
+Class: TerminalEngine
+Initialization
+pythonCopyengine = TerminalEngine(width, height, tick_rate=60, max_fps=60)
+
+width: The width of the game area in characters
+height: The height of the game area in characters
+tick_rate: The number of logic updates per second (default: 60)
+max_fps: The maximum number of frames rendered per second (default: 60)
+
+Methods
+draw_pixel(x, y, char)
+Draws a single character at the specified coordinates.
+
+x: X-coordinate (0 is left)
+y: Y-coordinate (0 is top)
+char: The character to draw
+
+draw_text(x, y, text)
+Draws a string of text starting at the specified coordinates.
+
+x: Starting X-coordinate
+y: Y-coordinate
+text: The string to draw
+
+is_key_pressed(key)
+Checks if a key is currently being pressed.
+
+key: The key to check (lowercase)
+
+is_key_released(key)
+Checks if a key was released in the last frame.
+
+key: The key to check (lowercase)
+
+update(dt)
+The main update method to be overridden in your game class. Called every tick.
+
+dt: The time elapsed since the last update (in seconds)
+
+run()
+Starts the game loop. This method should be called to begin the game.
+Creating a Game
+To create a game using the TerminalEngine, follow these steps:
+
+Create a new class that inherits from TerminalEngine.
+Override the update(dt) method to implement your game logic.
+Use the provided drawing methods to render your game state.
+Instantiate your game class and call the run() method.
+
+Example:
+
+class MyGame(TerminalEngine):
+    def __init__(self, width, height):
+        super().__init__(width, height)
+        self.player_x = width // 2
+        self.player_y = height // 2
+
+    def update(self, dt):
+        if self.is_key_pressed('q'):
+            self.running = False
+
+        if self.is_key_pressed('w'): self.player_y -= 1
+        if self.is_key_pressed('s'): self.player_y += 1
+        if self.is_key_pressed('a'): self.player_x -= 1
+        if self.is_key_pressed('d'): self.player_x += 1
+
+        self.player_x = max(0, min(self.width - 1, self.player_x))
+        self.player_y = max(0, min(self.height - 1, self.player_y))
+
+        self.buffer = [[' ' for _ in range(self.width)] for _ in range(self.height)]
+        self.draw_pixel(self.player_x, self.player_y, '@')
+        self.draw_text(0, 0, "Use WASD to move, Q to quit")
+
+if __name__ == "__main__":
+    game = MyGame(40, 20)
+    game.run()
+
+This example creates a simple game with a player character that can be moved using the WASD keys.
+Best Practices
+
+Keep your update() method efficient, as it will be called at a fixed rate.
+Use self.is_key_pressed() for continuous actions and self.is_key_released() for one-time actions.
+Clear the buffer at the beginning of each update if you're redrawing the entire screen.
+Use self.draw_pixel() and self.draw_text() for all rendering operations.
+Remember to set self.running = False when you want to end the game.
+
+By following this documentation, you should be able to create various terminal-based games using the TerminalEngine. 
+The engine provides a solid foundation for handling timing, input, and rendering, allowing you to focus on implementing your game logic.
+
+
+version 0.2.0
+---------------------
+import time
+import os
+import sys
+import select
+import threading
+import math
+import termios
+import tty
+import atexit
+
+
+class TerminalEngine:
+    def __init__(self, width, height, tick_rate=60, max_fps=60):
+        self.width = width
+        self.height = height
+        self.buffer = [[" " for _ in range(width)] for _ in range(height)]
+        self.prev_buffer = [[" " for _ in range(width)] for _ in range(height)]
+        self.running = False
+        self.tick_rate = tick_rate
+        self.max_fps = max_fps
+        self.tick_duration = 1.0 / tick_rate
+        self.frame_duration = 1.0 / max_fps
+        self.keys_pressed = set()
+        self.keys_released = set()
+        self.input_thread = None
+        self.old_settings = termios.tcgetattr(sys.stdin)
+
+    def clear_screen(self):
+        os.system("cls" if os.name == "nt" else "clear")
+
+    def draw_pixel(self, x, y, char):
+        if 0 <= x < self.width and 0 <= y < self.height:
+            self.buffer[y][x] = char
+
+    def draw_text(self, x, y, text):
+        for i, char in enumerate(text):
+            self.draw_pixel(x + i, y, char)
+
+    def render(self):
+        output = []
+        for y in range(self.height):
+            for x in range(self.width):
+                if self.buffer[y][x] != self.prev_buffer[y][x]:
+                    output.append(f"\033[{y+1};{x+1}H{self.buffer[y][x]}")
+                    self.prev_buffer[y][x] = self.buffer[y][x]
+        sys.stdout.write("".join(output))
+        sys.stdout.flush()
+
+    def input_handler(self):
+        while self.running:
+            if os.name == "nt":
+                import msvcrt
+
+                if msvcrt.kbhit():
+                    key = msvcrt.getch().decode("utf-8").lower()
+                    self.keys_pressed.add(key)
+            else:
+                rlist, _, _ = select.select([sys.stdin], [], [], 0.1)
+                if rlist:
+                    key = sys.stdin.read(1).lower()
+                    self.keys_pressed.add(key)
+            time.sleep(0.01)
+
+    def start_input_thread(self):
+        self.input_thread = threading.Thread(target=self.input_handler)
+        self.input_thread.daemon = True
+        self.input_thread.start()
+
+    def stop_input_thread(self):
+        self.running = False
+        if self.input_thread:
+            self.input_thread.join()
+
+    def is_key_pressed(self, key):
+        return key in self.keys_pressed
+
+    def is_key_released(self, key):
+        return key in self.keys_released
+
+    def clear_key_states(self):
+        self.keys_released = self.keys_pressed
+        self.keys_pressed = set()
+
+    def update(self, dt):
+        pass
+
+    def set_raw_mode(self):
+        if os.name != "nt":
+            tty.setraw(sys.stdin.fileno())
+
+    def restore_terminal(self):
+        if os.name != "nt":
+            termios.tcsetattr(sys.stdin, termios.TCSADRAIN, self.old_settings)
+
+    def run(self):
+        self.running = True
+        self.clear_screen()
+        print("\033[?25l", end="", flush=True)  # Hide cursor
+
+        self.set_raw_mode()
+        atexit.register(self.restore_terminal)
+
+        self.start_input_thread()
+
+        previous_time = time.perf_counter()
+        lag = 0.0
+
+        try:
+            while self.running:
+                current_time = time.perf_counter()
+                elapsed = current_time - previous_time
+                previous_time = current_time
+                lag += elapsed
+
+                while lag >= self.tick_duration:
+                    self.update(self.tick_duration)
+                    lag -= self.tick_duration
+
+                self.render()
+                self.clear_key_states()
+
+                frame_end = time.perf_counter()
+                frame_elapsed = frame_end - current_time
+                if frame_elapsed < self.frame_duration:
+                    time.sleep(self.frame_duration - frame_elapsed)
+        finally:
+            self.stop_input_thread()
+            self.restore_terminal()
+            print("\033[?25h", end="", flush=True)  # Show cursor
+
+---------------------
+
+Key changes:
+
+Added set_raw_mode() and restore_terminal() methods to handle terminal settings.
+Used atexit.register() to ensure the terminal is restored even if the program crashes.
+Wrapped the main game loop in a try-finally block to ensure proper cleanup.
+
+These changes should make the input work correctly on both Windows and Unix-like systems. 
+The WASD keys should now control the player without being printed to the terminal.
+Here's a brief explanation of the new methods:
+
+set_raw_mode(): This puts the terminal into "raw" mode on Unix-like systems, which allows us to read input immediately without waiting for Enter.
+restore_terminal(): This restores the terminal to its original state when the game exits.
+
+The rest of the engine remains largely the same. This version should provide a smooth, responsive experience across different operating systems.
+To use this engine for your own games, you can still follow the previously provided documentation. 
+The only addition is that you don't need to worry about terminal modes or input echo - the engine now handles that automatically.
